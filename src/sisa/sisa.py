@@ -1,20 +1,19 @@
 import jax.numpy as np
-from jax import jit, grad, random
-from jax.experimental import optimizers
-from jax.experimental import stax
-from jax.experimental.stax import Dense, Relu, LogSoftmax, Tanh
+from jax import partial, grad, jit, nn, random, vmap, tree_util
+from jax.experimental import optimizers, stax
+from jax.experimental.stax import Dense, Relu, Tanh, Conv, MaxPool, Flatten
 
 from mnist import mnist
+from train import train
+from models import get_model
 
 from tqdm import tqdm
 from time import time
-import itertools
 
 
 if __name__ == "__main__":
   def log_time(f):
-    """Utility function for printing the execution time of a function in wall-time.
-    """
+    """Utility function for printing the execution time of a function in wall-time."""
     def g(*args):
       start = time()
       ret = f(*args)
@@ -24,8 +23,7 @@ if __name__ == "__main__":
     return g
 
   def shuffle(rng, *args):
-    """Shuffles a set of args, each the same way.
-    """
+    """Shuffles a set of args, each the same way."""
     return (random.permutation(rng, arg) for arg in args)
 
   def shard_and_slice(num_shards, num_slices, *args):
@@ -37,7 +35,7 @@ if __name__ == "__main__":
     return ([np.split(shard, num_slices) for shard in np.split(arg, num_shards)] for arg in args)
 
   rng = random.PRNGKey(0)
-  num_shards, num_slices = 20, 5
+  num_shards, num_slices = 8, 5
 
   X, y, X_test, y_test = mnist()
   temp, rng = random.split(rng)
@@ -46,79 +44,30 @@ if __name__ == "__main__":
   # X[0<=i<num_shards][0<=j<num_slices] refers to the j'th slice of the i'th shard
   X, y = shard_and_slice(num_shards, num_slices, X, y)
 
-  init_fun, predict = stax.serial(
-    Dense(1024), Relu,
-    Dense(1024), Relu,
-    Dense(10), LogSoftmax
-  )
+  init_params, predict = get_model()
 
-  def init_params(rng):
-    """Given an rng key, returns a randomly initialized set of params.
-    """
-    return init_fun(rng, (-1, 28 * 28))[1]
-
-  def train(rng, params, X, y):
-    """Generic train function.
-
-    Responsible for, given an rng key, a set of parameters to be trained, some inputs X and some outputs y,
-    finetuning the params on X and y according to some internally defined training configuration.
-    """
-    iterations = 15
-    batch_size = 128
-    step_size = 0.001
-
-    opt_init, opt_update, get_params = optimizers.adam(step_size)
-    opt_state = opt_init(params)
-
-    def loss(params, batch):
-      inputs, targets = batch
-      preds = predict(params, inputs)
-      return -np.mean(np.sum(preds * targets, axis=1))
-
-    @jit
-    def update(i, opt_state, batch):
-      params = get_params(opt_state)
-      return opt_update(i, grad(loss)(params, batch), opt_state)
-
-    def data_stream():
-      num_train = len(X)
-      num_complete_batches, leftover = divmod(num_train, batch_size)
-      num_batches = num_complete_batches + bool(leftover)
-
-      rng = random.PRNGKey(0)
-      while True:
-        temp, rng = random.split(rng)
-        perm = random.permutation(temp, num_train)
-        for i in range(num_batches):
-          batch_idx = perm[i * batch_size:(i + 1) * batch_size]
-          yield X[batch_idx], y[batch_idx]
-
-    batches = data_stream()
-    itercount = itertools.count()
-    for _ in range(iterations):
-      opt_state = update(next(itercount), opt_state, next(batches))
-
-    return get_params(opt_state)
+  def train_shard(rng, init_params, X, y, train):
+    """Given an individual shard, trains a model for each slice."""
+    shard_params = [init_params(rng)]
+    for i in range(len(X)):
+      temp, rng = random.split(rng)
+      X_train, y_train = np.concatenate(X[:i+1]), np.concatenate(y[:i+1])
+      finetuned_params = train(temp, shard_params[-1], predict, X_train, y_train)
+      shard_params.append(finetuned_params)
+    return shard_params
 
   @log_time
   def get_trained_sharded_and_sliced_params(rng, init_params, X, y, train):
-    """Given a sharded and sliced dataset, constructs a sharded and sliced parameter object.
-    """
-    params = []
-    for i in tqdm(range(len(X))):
-      temp, rng = random.split(rng)
-      shard_params = [init_params(temp)]
-      for j in range(len(X[i])):
-        X_train, y_train = np.concatenate(X[i][:j+1]), np.concatenate(y[i][:j+1])
-        temp, rng = random.split(rng)
-        finetuned_params = train(temp, shard_params[-1], X_train, y_train)
-        shard_params.append(finetuned_params)
-      params.append(shard_params)
-    return params
+    """Given a sharded and sliced dataset, constructs a sharded and sliced parameter object."""
+    rngs = random.split(rng, len(X))
+    # TODO: Parallelize following
+    return [
+      train_shard(rng, init_params, X_shard, y_shard, train)
+      for rng, X_shard, y_shard in tqdm(list(zip(rngs, X, y)))
+    ]
 
   def sharded_and_sliced_predict(params, X):
-    """Given a sharded and sliced dataset and set of params, defined the prediction function.
-    """
+    """Given a sharded and sliced dataset and set of params, defined the prediction function."""
     votes = np.zeros((X.shape[0], 10))
     for slice_params in params:
       predictions = predict(slice_params[-1], X)
@@ -141,8 +90,7 @@ if __name__ == "__main__":
         num_examples = new_num_examples
 
   def delete_index(idx, *args):
-    """Deletes the idx'th element of each arg (assumes they all have the same shape).
-    """
+    """Deletes the idx'th element of each arg (assumes they all have the same shape)."""
     i, j, k = get_location(idx, args[0])
     for arg in args:
       arg[i][j] = arg[i][j][np.eye(len(arg[i][j]))[k] == 0.]
@@ -160,7 +108,7 @@ if __name__ == "__main__":
     for s in range(j, len(X[i])):
       temp, rng = random.split(rng)
       X_train, y_train = np.concatenate(X[i][:s+1]), np.concatenate(y[i][:s+1])
-      params[i][s+1] = train(temp, params[i][s], X_train, y_train)
+      params[i][s+1] = train(temp, params[i][s], predict, X_train, y_train)
     return params, X, y
 
   @log_time
@@ -185,18 +133,20 @@ if __name__ == "__main__":
         if update_occured:
           temp, rng = random.split(rng)
           X_train, y_train = np.concatenate(X[i][:j+1]), np.concatenate(y[i][:j+1])
-          params[i][j+1] = train(temp, params[i][j], X_train, y_train)
+          params[i][j+1] = train(temp, params[i][j], predict, X_train, y_train)
         num_examples = new_num_examples
     return params, X, y
 
   def total_examples(X):
-    """Counts the total number of examples of a sharded and sliced data object X.
-    """
+    """Counts the total number of examples of a sharded and sliced data object X."""
     count = 0
     for i in range(len(X)):
       for j in range(len(X[i])):
         count += len(X[i][j])
     return count
+
+  def exponential_mechanism(quality, sensitivity, epsilon):
+    return nn.softmax(epsilon * quality / (2 * sensitivity))
 
   print('Training full model (Shards={}, Slices={})...'.format(num_shards, num_slices))
   # params[0 <= i < num_shards][0 <= j <= num_slices] refers to the params trained on the first j slices of the i'th shard,
@@ -223,5 +173,3 @@ if __name__ == "__main__":
   params, X, y = delete_and_retrain_multiple(temp, idxs, params, X, y, train)
   predictions = sharded_and_sliced_predict(params, X_test)
   print('Accuracy (N={}): {:.4}\n'.format(total_examples(X), np.mean(predictions == targets)))
-
-
