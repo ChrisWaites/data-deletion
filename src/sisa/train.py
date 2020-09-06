@@ -10,7 +10,7 @@ def train(rng, params, predict, X, y):
   Responsible for, given an rng key, a set of parameters to be trained, some inputs X and some outputs y,
   finetuning the params on X and y according to some internally defined training configuration.
   """
-  private = True
+  private = False
   l2_norm_clip = 1.5
   noise_multiplier = 1.3
   iterations = 75

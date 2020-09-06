@@ -32,15 +32,15 @@ python src/sisa/sisa.py
 
 ## Relevant Work
 
-  > [Machine Unlearning](https://arxiv.org/abs/1912.03817)\
-  > Lucas Bourtoule, Varun Chandrasekaran, Christopher A. Choquette-Choo, Hengrui Jia, Adelin Travers, Baiwu Zhang, David Lie, Nicolas Papernot\
-  > _arXiv:1912.03817_
+> [Machine Unlearning](https://arxiv.org/abs/1912.03817)\
+> Lucas Bourtoule, Varun Chandrasekaran, Christopher A. Choquette-Choo, Hengrui Jia, Adelin Travers, Baiwu Zhang, David Lie, Nicolas Papernot\
+> _arXiv:1912.03817_
 
-  > [Descent-to-Delete: Gradient-Based Methods for Machine Unlearning](https://arxiv.org/abs/2007.02923)\
-  > Seth Neel, Aaron Roth, Saeed Sharifi-Malvajerdi\
-  > _arXiv:2007.02923_
+> [Descent-to-Delete: Gradient-Based Methods for Machine Unlearning](https://arxiv.org/abs/2007.02923)\
+> Seth Neel, Aaron Roth, Saeed Sharifi-Malvajerdi\
+> _arXiv:2007.02923_
 
-  > [Making AI Forget You: Data Deletion in Machine Learning](https://arxiv.org/abs/1907.05012)\
-  > Antonio Ginart, Melody Y. Guan, Gregory Valiant, James Zou\
-  > _arXiv:1907.05012_
+> [Making AI Forget You: Data Deletion in Machine Learning](https://arxiv.org/abs/1907.05012)\
+> Antonio Ginart, Melody Y. Guan, Gregory Valiant, James Zou\
+> _arXiv:1907.05012_
 
