@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
     For example, given a sharded and sliced data object with two shards:
       [[_, _, _], [_, _, _], [_, #, _]], [...]
-    Then, the # would be the 7th element (idx), and ti would be at location (shard: 0, slice: 2, value: 1).
+    Then, the # would be the 7th element (idx), and it would be at location (shard: 0, slice: 2, value: 1).
     """
     num_examples = 0
     for i in range(len(X)):
