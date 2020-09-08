@@ -47,7 +47,7 @@ def train_shard(rng, init_params, X, y, train):
 def get_trained_sharded_and_sliced_params(rng, init_params, X, y, train):
   """Given a sharded and sliced dataset, constructs a sharded and sliced parameter object."""
   rngs = random.split(rng, len(X))
-  # TODO: Parallelize following
+  # TODO: Parallelize training of each shard
   return [
     train_shard(rng, init_params, X_shard, y_shard, train)
     for rng, X_shard, y_shard in tqdm(list(zip(rngs, X, y)))
@@ -60,6 +60,23 @@ def sharded_and_sliced_predict(params, X):
     predictions = predict(slice_params[-1], X)
     votes += np.eye(10)[np.argmax(predictions, axis=1)]
   return np.argmax(votes, axis=1)
+
+def sharded_and_sliced_predict_exponential_mechanism(rng, params, X, epsilon):
+  """Given a sharded and sliced dataset and set of params, defined the prediction function."""
+  votes = np.zeros((X.shape[0], 10))
+  for slice_params in params:
+    predictions = predict(slice_params[-1], X)
+    votes += np.eye(10)[np.argmax(predictions, axis=1)]
+  scores = nn.softmax((epsilon / X.shape[0]) * votes / 2, 1)
+  samples = []
+  for i in range(scores.shape[0]):
+    temp, rng = random.split(rng)
+    sample = random.choice(temp, np.arange(scores.shape[1]), p=scores[i])
+    samples.append(sample)
+  return np.array(samples)
+
+def exponential_mechanism(quality, sensitivity, epsilon):
+  return nn.softmax(epsilon * quality / (2 * sensitivity))
 
 def get_location(idx, X):
   """Retrieves the location, i.e., the shard index i, slice index j, and value index k of the idx'th element in the struct.
@@ -132,8 +149,6 @@ def total_examples(X):
       count += len(X[i][j])
   return count
 
-def exponential_mechanism(quality, sensitivity, epsilon):
-  return nn.softmax(epsilon * quality / (2 * sensitivity))
 
 if __name__ == "__main__":
   rng = random.PRNGKey(0)
@@ -156,6 +171,11 @@ if __name__ == "__main__":
   targets = np.argmax(y_test, axis=1)
   predictions = sharded_and_sliced_predict(params, X_test)
   print('Accuracy (N={}): {:.4}\n'.format(total_examples(X), np.mean(predictions == targets)))
+
+  epsilon = 12000.
+  temp, rng = random.split(rng)
+  predictions = sharded_and_sliced_predict_exponential_mechanism(rng, params, X_test, epsilon)
+  print('Accuracy (ε = {}, N={}): {:.4}\n'.format(epsilon, total_examples(X), np.mean(predictions == targets)))
 
   for delete_request in range(5):
     print('Deleting 1 datapoint...')

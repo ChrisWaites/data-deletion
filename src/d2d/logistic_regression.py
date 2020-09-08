@@ -89,7 +89,7 @@ if __name__ == "__main__":
   epsilon = 5
   delta = 1 / (num_examples ** 2)
 
-  # Randomly generated linearly seperable points labeled 1 if above Y = 0 and 0 otherwise
+  # Two dimensional Gaussian points with label 1 if above Y = 0 and 0 otherwise
   X = random.normal(rng, shape=(num_examples, 2)) # (num_examples, 2)
   y = (X[:, 0] > 0.).astype(np.int32) # (num_examples,)
 
@@ -98,17 +98,16 @@ if __name__ == "__main__":
 
   W = train(W, X, y, l2, init_iterations)
 
-  sigma = compute_sigma(num_examples, update_iterations, lipshitz, strong, epsilon, delta)
-
   # Delete first row `num_updates` times in sequence
   updates = [lambda X, y: delete_index(0, X, y) for i in range(num_updates)]
   train_fn = lambda W, X, y: train(W, X, y, l2, update_iterations)
 
   W, X, y = process_updates(W, X, y, updates, train_fn)
-
   print('Before publishing: {:.4f}'.format(accuracy(W, X, y)))
 
+  sigma = compute_sigma(num_examples, update_iterations, lipshitz, strong, epsilon, delta)
   temp, rng = random.split(rng)
   W = publish(temp, W, sigma)
 
+  print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
   print('After publishing: {:.4f}'.format(accuracy(W, X, y)))
