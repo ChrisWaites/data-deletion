@@ -10,14 +10,12 @@ def get_model(conv=False):
       Dense(32), Relu,
       Dense(10),
     )
-    def init_params(rng):
-      return init_fun(rng, (-1, 28, 28, 1))[1]
+    init_params = lambda rng: init_fun(rng, (-1, 28, 28, 1))[1]
   else:
     init_fun, predict = stax.serial(
       Dense(1024), Relu,
       Dense(1024), Relu,
       Dense(10),
     )
-    def init_params(rng):
-      return init_fun(rng, (-1, 28 * 28))[1]
+    init_params = lambda rng: init_fun(rng, (-1, 28 * 28))[1]
   return init_params, predict

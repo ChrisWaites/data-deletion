@@ -1,6 +1,7 @@
 import jax.numpy as np
 from jax import grad, nn, random, jit
 from jax.experimental import stax, optimizers
+from jax.experimental.optimizers import l2_norm
 from jax.numpy import linalg
 from tqdm import tqdm
 
@@ -13,11 +14,11 @@ def loss(W, X, y, l2=0.):
   """Binary cross entropy loss with l2 regularization."""
   y_hat = predict(W, X)
   bce = y * np.log(y_hat) + (1. - y) * np.log(1. - y_hat)
-  return -np.mean(bce) + l2 * linalg.norm(W, 2)
+  return -np.mean(bce) + l2 * l2_norm(W)
 
 def unit_projection(W):
   """Projects model parameters to have at most l2 norm of 1."""
-  return W / max(1, linalg.norm(W, 2))
+  return W / max(1, l2_norm(W))
 
 def step(W, X, y, l2=0., proj=unit_projection):
   """A single step of projected gradient descent."""
