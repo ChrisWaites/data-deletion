@@ -16,24 +16,16 @@ def loss(params, predict, X, y, l2=0.):
   """Binary cross entropy loss with l2 regularization."""
   y_hat = predict(params, X)
   bce = -np.mean(np.sum(y * y_hat, axis=1))
-  return bce + l2 * l2_norm(params)
+  return bce + (l2 / 2) * l2_norm(params)
 
-def unit_projection(params):
+def projection(params, norm=1.):
   """Projects model parameters to have at most l2 norm of 1."""
-  return clip_grads(params, 1)
+  return clip_grads(params, norm)
 
-def step(params, predict, X, y, l2=0., proj=unit_projection):
-  """A single step of projected gradient descent."""
-  gs = tree_flatten(grad(loss)(params, predict, X, y, l2))[0]
-  params, tree_def = tree_flatten(params)
-  params = [param - 0.5 * g for param, g in zip(params, gs)]
-  params = proj(params)
-  return tree_unflatten(tree_def, params)
-
-def train(params, predict, X, y, l2=0., iters=1):
+def train(params, step, iters=1):
   """Executes several model parameter steps."""
   for i in range(iters):
-    params = step(params, predict, X, y, l2)
+    params = step(params)
   return params
 
 def process_update(params, X, y, update, train):
@@ -51,10 +43,10 @@ def process_updates(params, X, y, updates, train):
     params, X, y = process_update(params, X, y, update, train)
   return params, X, y
 
-def compute_sigma(num_examples, iterations, lipshitz, strong, epsilon, delta):
+def compute_sigma(num_examples, iterations, lipshitz, strong, diameter, epsilon, delta):
   """Theorem 3.1 https://arxiv.org/pdf/2007.02923.pdf"""
   gamma = (smooth - strong) / (smooth + strong)
-  numerator = 4 * np.sqrt(2) * lipshitz * np.power(gamma, iterations)
+  numerator = 4 * np.sqrt(2) * (lipshitz + smooth * diameter) * np.power(gamma, iterations)
   denominator = (strong * num_examples * (1 - np.power(gamma, iterations))) * ((np.sqrt(np.log(1 / delta) + epsilon)) - np.sqrt(np.log(1 / delta)))
   return numerator / denominator
 
@@ -154,24 +146,35 @@ if __name__ == "__main__":
 
   print('Number of private points: {}'.format(X.shape[0]))
 
+  projection_radius = 4
+
   l2 = 0.05
   strong = l2
   smooth = 4 - l2
-  diameter = 2
+  diameter = 2 * projection_radius
   lipshitz = 1 + l2
 
   epsilon = 10.
   delta = 1 / (X.shape[0] ** 1.1)
 
-  init_iterations = 0
-  update_iterations = 10
-  num_updates = 1
+  init_iterations = 100
+  update_iterations = 75
+  num_updates = 25
+
+  @jit
+  def step(params):
+    """A single step of projected gradient descent."""
+    gs = tree_flatten(grad(loss)(params, predict, X, y, l2))[0]
+    params, tree_def = tree_flatten(params)
+    params = [param - (2 / (strong + smooth)) * g for param, g in zip(params, gs)]
+    params = projection(params, projection_radius)
+    return tree_unflatten(tree_def, params)
 
   print('Training on private points...')
-  params = train(params, predict, X, y, l2, init_iterations)
-  print('Accuracy: {:.4f}\n'.format(accuracy(params, predict, X, y)))
+  params = train(params, step, init_iterations)
+  print('Accuracy (not published): {:.4f}'.format(accuracy(params, predict, X, y)))
 
-  sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, epsilon, delta)
+  sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, diameter, epsilon, delta)
   print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
   temp, rng = random.split(rng)
   published_params = publish(temp, params, sigma)
@@ -179,13 +182,13 @@ if __name__ == "__main__":
 
   # Delete first row `num_updates` times in sequence
   updates = [lambda X, y: delete_index(0, X, y) for i in range(num_updates)]
-  train_fn = lambda params, X, y: train(params, predict, X, y, l2, update_iterations)
+  train_fn = lambda params, X, y: train(params, step, update_iterations)
 
   print('Processing updates...')
   params, X, y = process_updates(params, X, y, updates, train_fn)
-  print('Accuracy: {:.4f}\n'.format(accuracy(params, predict, X, y)))
+  print('Accuracy (not published): {:.4f}'.format(accuracy(params, predict, X, y)))
 
-  sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, epsilon, delta)
+  sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, diameter, epsilon, delta)
   print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
   temp, rng = random.split(rng)
   published_params = publish(temp, params, sigma)
