@@ -24,15 +24,14 @@ def unit_projection(params):
 
 def step(params, predict, X, y, l2=0., proj=unit_projection):
   """A single step of projected gradient descent."""
-  opt_init, opt_update, get_params = optimizers.sgd(step_size=0.5)
-  opt_state = opt_init(params)
-  opt_state = opt_update(0, grad(loss)(params, predict, X, y, l2), opt_state)
-  params = get_params(opt_state)
+  gs = tree_flatten(grad(loss)(params, predict, X, y, l2))[0]
+  params, tree_def = tree_flatten(params)
+  params = [param - 0.5 * g for param, g in zip(params, gs)]
   params = proj(params)
-  return params
+  return tree_unflatten(tree_def, params)
 
 def train(params, predict, X, y, l2=0., iters=1):
-  """Simply executes several model parameter steps."""
+  """Executes several model parameter steps."""
   for i in range(iters):
     params = step(params, predict, X, y, l2)
   return params
@@ -48,7 +47,7 @@ def process_update(params, X, y, update, train):
 
 def process_updates(params, X, y, updates, train):
   """Processes a sequence of updates."""
-  for update in updates:
+  for update in tqdm(updates):
     params, X, y = process_update(params, X, y, update, train)
   return params, X, y
 
@@ -61,14 +60,16 @@ def compute_sigma(num_examples, iterations, lipshitz, strong, epsilon, delta):
 
 def publish(rng, params, sigma):
   """Publishing function which adds Gaussian noise with scale sigma."""
-  flat_params, tree_def = tree_flatten(params)
-  rngs = random.split(rng, len(flat_params))
-  noised_params = [param + sigma * random.normal(rng, param.shape) for rng, param in zip(rngs, flat_params)]
+  params, tree_def = tree_flatten(params)
+  rngs = random.split(rng, len(params))
+  noised_params = [param + sigma * random.normal(rng, param.shape) for rng, param in zip(rngs, params)]
   return tree_unflatten(tree_def, noised_params)
 
-def accuracy(params, X, y):
+def accuracy(params, predict, X, y):
   """Computes the model accuracy given a dataset."""
-  return np.mean((predict(params, X) > 0.5).astype(np.int32) == y)
+  y_pred = np.argmax(predict(params, X), 1)
+  y = np.argmax(y, 1)
+  return np.mean(y == y_pred)
 
 def delete_index(idx, *args):
   """Deletes index `idx` from each of args (assumes they all have same shape)."""
@@ -84,93 +85,108 @@ if __name__ == "__main__":
   X, y, X_test, y_test = mnist()
   X, X_test = X.reshape(-1, 28, 28, 1), X_test.reshape(-1, 28, 28, 1)
 
-  num_examples = X_test.shape[0]
-  num_updates = 25
-
-  init_iterations = 1000
-  update_iterations = 25
-
-  feature_extractor_init, feature_extractor = stax.serial(
+  fe_init, fe_forward = stax.serial(
     Conv(16, (8, 8), padding='SAME', strides=(2, 2)), Relu, MaxPool((2, 2), (1, 1)),
     Conv(32, (4, 4), padding='VALID', strides=(2, 2)), Relu, MaxPool((2, 2), (1, 1)),
     Flatten, Dense(32), Relu,
   )
-
   temp, rng = random.split(rng)
-  feature_extractor_params = feature_extractor_init(temp, (-1, 28, 28, 1))[1]
+  fe_params = fe_init(temp, (-1, 28, 28, 1))[1]
 
-  classifier_init, classifier = stax.serial(
-    Dense(10), LogSoftmax,
-  )
-
+  lr_init, lr_forward = stax.serial(Dense(10), LogSoftmax)
   temp, rng = random.split(rng)
-  classifier_params = classifier_init(temp, (-1, 32))[1]
+  lr_params = lr_init(temp, (-1, 32))[1]
 
-  def pretrain(params, predict, X, y, iterations=75, batch_size=32, step_size=0.15):
+  def pretrain(params, predict, X, y, iterations=5000, batch_size=64, step_size=0.001):
     def data_stream():
-      num_train = X.shape[0]
-      num_complete_batches, leftover = divmod(num_train, batch_size)
-      num_batches = num_complete_batches + bool(leftover)
+      rng = random.PRNGKey(0)
 
+      num_complete_batches, leftover = divmod(X.shape[0], batch_size)
+      num_batches = num_complete_batches + bool(leftover)
       while True:
-        perm = random.permutation(temp, num_train)
+        temp, rng = random.split(rng)
+        perm = random.permutation(temp, X.shape[0])
         for i in range(num_batches):
           batch_idx = perm[i*batch_size:(i+1)*batch_size]
           yield X[batch_idx], y[batch_idx]
 
     def loss(params, batch):
-      inputs, targets = batch
-      preds = predict(params, inputs)
-      return -np.mean(np.sum(preds * targets, axis=1))
+      X, y = batch
+      y_hat = predict(params, X)
+      return -np.mean(np.sum(y * y_hat, axis=1))
 
     @jit
     def update(i, opt_state, batch):
       params = get_params(opt_state)
       return opt_update(i, grad(loss)(params, batch), opt_state)
 
+    def accuracy(params, batch):
+      X, y = batch
+      y = np.argmax(y, 1)
+      y_hat = np.argmax(predict(params, X), 1)
+      return np.mean(y_hat == y)
+
     opt_init, opt_update, get_params = optimizers.adam(step_size)
     opt_state = opt_init(params)
 
     batches = data_stream()
-    itercount = itertools.count()
-    for _ in range(iterations):
-      opt_state = update(next(itercount), opt_state, next(batches))
+    for i in tqdm(range(iterations)):
+      opt_state = update(i, opt_state, next(batches))
     return get_params(opt_state)
 
   def full_predict(params, inputs):
-    feature_extractor_params, classifer_params = params
-    features = feature_extractor(feature_extractor_params, inputs)
-    return classifier(classifer_params, features)
+    fe_params, lr_params = params
+    features = fe_forward(fe_params, inputs)
+    return lr_forward(lr_params, features)
 
-  feature_extractor_params, params = pretrain((feature_extractor_params, classifier_params), full_predict, X, y)
+  print('Training feature extractor...\n')
+  fe_params, params = pretrain((fe_params, lr_params), full_predict, X, y)
+
+  def predict(params, X):
+    features = fe_forward(fe_params, X)
+    return lr_forward(params, features)
+
+  print('Accuracy (public): {:.4f}'.format(accuracy(params, predict, X, y)))
+  print('Accuracy (private): {:.4f}\n'.format(accuracy(params, predict, X_test, y_test)))
+
+  # Throw out public points
+  X, y = X_test, y_test
+
+  print('Number of private points: {}'.format(X.shape[0]))
 
   l2 = 0.05
-
   strong = l2
   smooth = 4 - l2
   diameter = 2
   lipshitz = 1 + l2
 
-  epsilon = 5
-  delta = 1 / (num_examples ** 2)
+  epsilon = 10.
+  delta = 1 / (X.shape[0] ** 1.1)
 
-  # Throw out training data, fix feature extractor
-  X, y = X_test, y_test
+  init_iterations = 0
+  update_iterations = 10
+  num_updates = 1
 
-  def predict(params, X):
-    features = feature_extractor(feature_extractor_params, X)
-    return classifier(params, features)
+  print('Training on private points...')
+  params = train(params, predict, X, y, l2, init_iterations)
+  print('Accuracy: {:.4f}\n'.format(accuracy(params, predict, X, y)))
+
+  sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, epsilon, delta)
+  print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
+  temp, rng = random.split(rng)
+  published_params = publish(temp, params, sigma)
+  print('Accuracy (published): {:.4f}\n'.format(accuracy(published_params, predict, X, y)))
 
   # Delete first row `num_updates` times in sequence
   updates = [lambda X, y: delete_index(0, X, y) for i in range(num_updates)]
   train_fn = lambda params, X, y: train(params, predict, X, y, l2, update_iterations)
 
+  print('Processing updates...')
   params, X, y = process_updates(params, X, y, updates, train_fn)
-  print('Before publishing: {:.4f}'.format(accuracy(params, X, y)))
+  print('Accuracy: {:.4f}\n'.format(accuracy(params, predict, X, y)))
 
-  sigma = compute_sigma(num_examples, update_iterations, lipshitz, strong, epsilon, delta)
-  temp, rng = random.split(rng)
-  params = publish(temp, params, sigma)
-
+  sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, epsilon, delta)
   print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
-  print('After publishing: {:.4f}'.format(accuracy(params, X, y)))
+  temp, rng = random.split(rng)
+  published_params = publish(temp, params, sigma)
+  print('Accuracy (published): {:.4f}\n'.format(accuracy(published_params, predict, X, y)))

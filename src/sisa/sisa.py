@@ -158,6 +158,9 @@ if __name__ == "__main__":
   temp, rng = random.split(rng)
   X, y = shuffle(temp, X, y)
 
+  print('X: {}, y: {}'.format(X.shape, y.shape))
+  print('X_test: {}, y_test: {}'.format(X_test.shape, y_test.shape))
+
   # X[0<=i<num_shards][0<=j<num_slices] refers to the j'th slice of the i'th shard
   X, y = shard_and_slice(num_shards, num_slices, X, y)
 
@@ -172,11 +175,6 @@ if __name__ == "__main__":
   predictions = sharded_and_sliced_predict(params, X_test)
   print('Accuracy (N={}): {:.4}\n'.format(total_examples(X), np.mean(predictions == targets)))
 
-  epsilon = 12000.
-  temp, rng = random.split(rng)
-  predictions = sharded_and_sliced_predict_exponential_mechanism(rng, params, X_test, epsilon)
-  print('Accuracy (ε = {}, N={}): {:.4}\n'.format(epsilon, total_examples(X), np.mean(predictions == targets)))
-
   for delete_request in range(5):
     print('Deleting 1 datapoint...')
     temp, rng = random.split(rng)
@@ -186,7 +184,7 @@ if __name__ == "__main__":
     predictions = sharded_and_sliced_predict(params, X_test)
     print('Accuracy (N={}): {:.4}\n'.format(total_examples(X), np.mean(predictions == targets)))
 
-  num_points_to_delete = 10
+  num_points_to_delete = 1000
   print('Deleting {} datapoint(s)...'.format(num_points_to_delete))
   idxs = sorted(list(random.randint(temp, (num_points_to_delete,), 0, total_examples(X))))
   temp, rng = random.split(rng)

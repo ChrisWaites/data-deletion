@@ -1,7 +1,7 @@
 import jax.numpy as np
 from jax import grad, nn, random, jit
 from jax.experimental import stax, optimizers
-from jax.experimental.optimizers import l2_norm
+from jax.experimental.optimizers import l2_norm, clip_grads
 from jax.numpy import linalg
 from tqdm import tqdm
 
@@ -18,7 +18,7 @@ def loss(W, X, y, l2=0.):
 
 def unit_projection(W):
   """Projects model parameters to have at most l2 norm of 1."""
-  return W / max(1, l2_norm(W))
+  return clip_grads(W, 1)
 
 def step(W, X, y, l2=0., proj=unit_projection):
   """A single step of projected gradient descent."""
@@ -61,7 +61,8 @@ def publish(rng, W, sigma):
 
 def accuracy(W, X, y):
   """Computes the model accuracy given a dataset."""
-  return np.mean((predict(W, X) > 0.5).astype(np.int32) == y)
+  y_hat = (predict(W, X) > 0.5).astype(np.int32)
+  return np.mean(y_hat == y)
 
 def delete_index(idx, *args):
   """Deletes index `idx` from each of args (assumes they all have same shape)."""
@@ -74,41 +75,44 @@ def append_datum(data, *args):
 if __name__ == "__main__":
   rng = random.PRNGKey(0)
 
-  num_examples = 1000
+  num_train = 1000
+  num_test = 200
   num_updates = 25
 
   init_iterations = 1000
   update_iterations = 25
 
   l2 = 0.05
-
   strong = l2
   smooth = 4 - l2
   diameter = 2
   lipshitz = 1 + l2
 
   epsilon = 5
-  delta = 1 / (num_examples ** 2)
+  delta = 1 / (num_train ** 2)
 
   # Two dimensional Gaussian points with label 1 if above Y = 0 and 0 otherwise
-  X = random.normal(rng, shape=(num_examples, 2)) # (num_examples, 2)
-  y = (X[:, 0] > 0.).astype(np.int32) # (num_examples,)
+  X = random.normal(rng, shape=(num_train, 2)) # (num_train, 2)
+  y = (X[:, 0] > 0.).astype(np.int32) # (num_train,)
+
+  X_test = random.normal(rng, shape=(num_test, 2)) # (num_test, 2)
+  y_test = (X_test[:, 0] > 0.).astype(np.int32) # (num_test,)
 
   W = np.ones((X.shape[1],)) # (2,)
   W = unit_projection(W)
-
   W = train(W, X, y, l2, init_iterations)
 
   # Delete first row `num_updates` times in sequence
   updates = [lambda X, y: delete_index(0, X, y) for i in range(num_updates)]
   train_fn = lambda W, X, y: train(W, X, y, l2, update_iterations)
 
+  print('Processing updates...')
   W, X, y = process_updates(W, X, y, updates, train_fn)
-  print('Before publishing: {:.4f}'.format(accuracy(W, X, y)))
+  print('Accuracy: {:.4f}\n'.format(accuracy(W, X_test, y_test)))
 
-  sigma = compute_sigma(num_examples, update_iterations, lipshitz, strong, epsilon, delta)
+  sigma = compute_sigma(num_train, update_iterations, lipshitz, strong, epsilon, delta)
+  print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
+
   temp, rng = random.split(rng)
   W = publish(temp, W, sigma)
-
-  print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
-  print('After publishing: {:.4f}'.format(accuracy(W, X, y)))
+  print('Accuracy (published): {:.4f}'.format(accuracy(W, X_test, y_test)))
