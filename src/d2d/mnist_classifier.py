@@ -146,7 +146,7 @@ if __name__ == "__main__":
 
   print('Number of private points: {}'.format(X.shape[0]))
 
-  projection_radius = 4
+  projection_radius = 15
 
   l2 = 0.05
   strong = l2
@@ -154,7 +154,7 @@ if __name__ == "__main__":
   diameter = 2 * projection_radius
   lipshitz = 1 + l2
 
-  epsilon = 10.
+  epsilon = 5.
   delta = 1 / (X.shape[0] ** 1.1)
 
   init_iterations = 100
@@ -177,8 +177,7 @@ if __name__ == "__main__":
   sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, diameter, epsilon, delta)
   print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
   temp, rng = random.split(rng)
-  published_params = publish(temp, params, sigma)
-  print('Accuracy (published): {:.4f}\n'.format(accuracy(published_params, predict, X, y)))
+  print('Accuracy (published): {:.4f}\n'.format(accuracy(publish(temp, params, sigma), predict, X, y)))
 
   # Delete first row `num_updates` times in sequence
   updates = [lambda X, y: delete_index(0, X, y) for i in range(num_updates)]
@@ -191,5 +190,4 @@ if __name__ == "__main__":
   sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, diameter, epsilon, delta)
   print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
   temp, rng = random.split(rng)
-  published_params = publish(temp, params, sigma)
-  print('Accuracy (published): {:.4f}\n'.format(accuracy(published_params, predict, X, y)))
+  print('Accuracy (published): {:.4f}\n'.format(accuracy(publish(temp, params, sigma), predict, X, y)))

@@ -1,11 +1,9 @@
 import jax.numpy as np
-from jax import partial, grad, jit, nn, random, vmap, tree_util
+from jax import partial, grad, jit, nn, random, vmap, tree_util, ops
 from jax.experimental import optimizers, stax
 from jax.experimental.stax import Dense, Relu, Tanh, Conv, MaxPool, Flatten
 
 from mnist import mnist
-from train import train
-from models import get_model
 
 from tqdm import tqdm
 from time import time
@@ -33,7 +31,7 @@ def shard_and_slice(num_shards, num_slices, *args):
   """
   return ([np.split(shard, num_slices) for shard in np.split(arg, num_shards)] for arg in args)
 
-def train_shard(rng, init_params, X, y, train):
+def train_shard(rng, init_params, predict, X, y, train):
   """Given an individual shard, trains a model for each slice."""
   shard_params = [init_params(rng)]
   for i in range(len(X)):
@@ -44,39 +42,64 @@ def train_shard(rng, init_params, X, y, train):
   return shard_params
 
 @log_time
-def get_trained_sharded_and_sliced_params(rng, init_params, X, y, train):
+def get_trained_sharded_and_sliced_params(rng, init_params, predict, X, y, train):
   """Given a sharded and sliced dataset, constructs a sharded and sliced parameter object."""
   rngs = random.split(rng, len(X))
   # TODO: Parallelize training of each shard
   return [
-    train_shard(rng, init_params, X_shard, y_shard, train)
+    train_shard(rng, init_params, predict, X_shard, y_shard, train)
     for rng, X_shard, y_shard in tqdm(list(zip(rngs, X, y)))
   ]
 
-def sharded_and_sliced_predict(params, X):
-  """Given a sharded and sliced dataset and set of params, defined the prediction function."""
-  votes = np.zeros((X.shape[0], 10))
-  for slice_params in params:
-    predictions = predict(slice_params[-1], X)
-    votes += np.eye(10)[np.argmax(predictions, axis=1)]
+def get_votes(params, predict, X):
+  """Randomly samples from scores - assumes scores is already normalized."""
+  preds = predict(params[0][-1], X)
+  one_hot = np.eye(preds.shape[1])
+  votes = one_hot[np.argmax(preds, axis=1)]
+  for slice_params in params[1:]:
+    preds = predict(slice_params[-1], X)
+    votes += one_hot[np.argmax(preds, axis=1)]
+  return votes
+
+def randomly_sample(rng, scores):
+  """Randomly samples from scores - assumes scores is already normalized."""
+  rngs = random.split(rng, scores.shape[0])
+  indices = np.arange(scores.shape[1])
+  return np.array([random.choice(temp, indices, p=weights) for rng, weights in zip(rngs, scores)])
+
+def max_votes(votes):
+  """Deterministic aggregation mechanism, simply returns class with highest score."""
   return np.argmax(votes, axis=1)
 
-def sharded_and_sliced_predict_exponential_mechanism(rng, params, X, epsilon):
-  """Given a sharded and sliced dataset and set of params, defined the prediction function."""
-  votes = np.zeros((X.shape[0], 10))
-  for slice_params in params:
-    predictions = predict(slice_params[-1], X)
-    votes += np.eye(10)[np.argmax(predictions, axis=1)]
-  scores = nn.softmax((epsilon / X.shape[0]) * votes / 2, 1)
-  samples = []
-  for i in range(scores.shape[0]):
-    temp, rng = random.split(rng)
-    sample = random.choice(temp, np.arange(scores.shape[1]), p=scores[i])
-    samples.append(sample)
-  return np.array(samples)
+def exponential_mechanism(rng, votes, sensitivity, per_example_epsilon):
+  """Exponential mechanism."""
+  scores = nn.softmax(per_example_epsilon * votes / (2 * sensitivity))
+  return randomly_sample(rng, scores)
 
-def exponential_mechanism(quality, sensitivity, epsilon):
-  return nn.softmax(epsilon * quality / (2 * sensitivity))
+def lnmax(rng, votes, per_example_epsilon):
+  """LNMax: Discovering frequent patterns in sensitive data, Bhaskar et al."""
+  votes = votes + (1 / (per_example_epsilon / 2)) * random.laplace(rng, votes.shape)
+  return np.argmax(votes, axis=1)
+
+def gnmax(rng, votes, sigma):
+  """GNMax: Section 4 of https://arxiv.org/pdf/1802.08908.pdf."""
+  votes = votes + sigma * random.normal(rng, votes.shape)
+  return np.argmax(votes, axis=1)
+
+def confident_gnmax(rng, votes, sigma_1, sigma_2, threshold):
+  """GNMax: Section 4 of https://arxiv.org/pdf/1802.08908.pdf."""
+  rng_1, rng_2 = random.split(rng)
+  max_vote_count = np.max(votes, axis=1)
+  noisy_max_vote_count = max_vote_count + sigma_1 * random.normal(rng_1, max_vote_count.shape)
+  didnt_achieve_consensus = noisy_max_vote_count < threshold
+  noisy_vote_counts = votes + random.normal(rng_2, votes.shape)
+  votes = np.argmax(noisy_vote_counts, axis=1)
+  votes = ops.index_update(votes, ops.index[didnt_achieve_consensus], -1.)
+  return votes
+
+def sharded_and_sliced_predict(params, predict, X, aggregate=max_votes):
+  """Given a sharded and sliced dataset and params, defines the prediction function."""
+  return aggregate(get_votes(params, predict, X))
 
 def get_location(idx, X):
   """Retrieves the location, i.e., the shard index i, slice index j, and value index k of the idx'th element in the struct.
@@ -101,7 +124,7 @@ def delete_index(idx, *args):
   return args
 
 @log_time
-def delete_and_retrain(rng, idx, params, X, y, train):
+def delete_and_retrain(rng, idx, params, predict, X, y, train):
   """Deletes the idx'th element, and then retrains the sharded and sliced params accordingly.
 
   That is, if we want to delete the value at location (shard: i, slice: j, value: k), then we retrain
@@ -116,7 +139,7 @@ def delete_and_retrain(rng, idx, params, X, y, train):
   return params, X, y
 
 @log_time
-def delete_and_retrain_multiple(rng, idxs, params, X, y, train):
+def delete_and_retrain_multiple(rng, idxs, params, predict, X, y, train):
   """The same as delete_and_retrain, but allows for multiple indices to be specified.
 
   Can be more efficient than calling delete_and_retrain multiple times in sequence,
@@ -149,45 +172,3 @@ def total_examples(X):
       count += len(X[i][j])
   return count
 
-
-if __name__ == "__main__":
-  rng = random.PRNGKey(0)
-  num_shards, num_slices = 8, 5
-
-  X, y, X_test, y_test = mnist()
-  temp, rng = random.split(rng)
-  X, y = shuffle(temp, X, y)
-
-  print('X: {}, y: {}'.format(X.shape, y.shape))
-  print('X_test: {}, y_test: {}'.format(X_test.shape, y_test.shape))
-
-  # X[0<=i<num_shards][0<=j<num_slices] refers to the j'th slice of the i'th shard
-  X, y = shard_and_slice(num_shards, num_slices, X, y)
-
-  init_params, predict = get_model()
-
-  print('Training full model (Shards={}, Slices={})...'.format(num_shards, num_slices))
-  # params[0 <= i < num_shards][0 <= j <= num_slices] refers to the params trained on the first j slices of the i'th shard,
-  # i.e., j == 0 yields randomly initialized params trained on no data, j == 1 yields params trained on the first slice, etc.
-  params = get_trained_sharded_and_sliced_params(rng, init_params, X, y, train)
-
-  targets = np.argmax(y_test, axis=1)
-  predictions = sharded_and_sliced_predict(params, X_test)
-  print('Accuracy (N={}): {:.4}\n'.format(total_examples(X), np.mean(predictions == targets)))
-
-  for delete_request in range(5):
-    print('Deleting 1 datapoint...')
-    temp, rng = random.split(rng)
-    idx = random.randint(temp, (), 0, total_examples(X))
-    temp, rng = random.split(rng)
-    params, X, y = delete_and_retrain(temp, idx, params, X, y, train)
-    predictions = sharded_and_sliced_predict(params, X_test)
-    print('Accuracy (N={}): {:.4}\n'.format(total_examples(X), np.mean(predictions == targets)))
-
-  num_points_to_delete = 1000
-  print('Deleting {} datapoint(s)...'.format(num_points_to_delete))
-  idxs = sorted(list(random.randint(temp, (num_points_to_delete,), 0, total_examples(X))))
-  temp, rng = random.split(rng)
-  params, X, y = delete_and_retrain_multiple(temp, idxs, params, X, y, train)
-  predictions = sharded_and_sliced_predict(params, X_test)
-  print('Accuracy (N={}): {:.4}\n'.format(total_examples(X), np.mean(predictions == targets)))
