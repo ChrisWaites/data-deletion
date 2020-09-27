@@ -65,13 +65,13 @@ def randomly_sample(rng, scores):
   """Randomly samples from scores - assumes scores is already normalized."""
   rngs = random.split(rng, scores.shape[0])
   indices = np.arange(scores.shape[1])
-  return np.array([random.choice(temp, indices, p=weights) for rng, weights in zip(rngs, scores)])
+  return np.array([random.choice(rng, indices, p=weights) for rng, weights in zip(rngs, scores)])
 
 def max_votes(votes):
   """Deterministic aggregation mechanism, simply returns class with highest score."""
   return np.argmax(votes, axis=1)
 
-def exponential_mechanism(rng, votes, sensitivity, per_example_epsilon):
+def exponential_mechanism(rng, votes, per_example_epsilon, sensitivity=1.):
   """Exponential mechanism."""
   scores = nn.softmax(per_example_epsilon * votes / (2 * sensitivity))
   return randomly_sample(rng, scores)

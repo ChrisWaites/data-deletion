@@ -10,7 +10,8 @@ def conv():
     Relu,
     MaxPool((2, 2), (1, 1)),
     Flatten,
-    Dense(32), Relu,
+    Dense(32),
+    Relu,
     Dense(10),
   )
   def init_params(rng):
@@ -28,3 +29,5 @@ def feed_forward():
   def init_params(rng):
     return init_fun(rng, (-1, 28 * 28))[1]
   return init_params, predict
+
+

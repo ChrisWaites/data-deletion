@@ -27,9 +27,9 @@ def train(rng, params, predict, X, y):
   Responsible for, given an rng key, a set of parameters to be trained, some inputs X and some outputs y,
   finetuning the params on X and y according to some internally defined training configuration.
   """
-  iterations = 150
-  batch_size = 64
-  step_size = 0.001
+  iterations = 65
+  batch_size = 32
+  step_size = 0.01
 
   @jit
   def update(_, i, opt_state, batch):
@@ -48,17 +48,21 @@ def train(rng, params, predict, X, y):
   return get_params(opt_state)
 
 
+private_training_parameters = {
+  'l2_norm_clip': 1.5,
+  'noise_multiplier': 0.7,
+  'iterations':  500,
+  'batch_size': 64,
+  'step_size': 0.25,
+}
+
 def privately_train(rng, params, predict, X, y):
   """Generic train function called for each slice.
 
   Responsible for, given an rng key, a set of parameters to be trained, some inputs X and some outputs y,
   finetuning the params on X and y according to some internally defined training configuration.
   """
-  l2_norm_clip = 1.5
-  noise_multiplier = 1.3
-  iterations = 90
-  batch_size = 32
-  step_size = 0.15
+  locals().update(private_training_parameters)
 
   def clipped_grad(params, l2_norm_clip, single_example_batch):
     grads = grad(loss)(params, predict, single_example_batch)
