@@ -14,7 +14,7 @@ Idea: train a full model on public points, treat all but the last layer as a fix
 
 [MNIST](https://en.wikipedia.org/wiki/MNIST_database)
 
-<img src="https://en.wikipedia.org/wiki/MNIST_database#/media/File:MnistExamples.png" />
+![alt text](../../resources/mnist.png)
 
 Public points:
 

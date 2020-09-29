@@ -1,10 +1,10 @@
 import jax.numpy as np
 from jax import grad, nn, random, jit
 from jax.experimental import stax, optimizers
-from jax.experimental.optimizers import l2_norm, clip_grads
+from jax.experimental.optimizers import l2_norm
 from jax.numpy import linalg
 from jax.experimental.stax import Dense, Relu, Tanh, Conv, MaxPool, Flatten, Softmax, LogSoftmax
-from jax.tree_util import tree_flatten, tree_unflatten
+from jax.tree_util import tree_flatten, tree_unflatten, tree_map
 
 from mnist import mnist
 
@@ -16,12 +16,18 @@ import pickle
 def loss(params, predict, X, y, l2=0.):
   """Binary cross entropy loss with l2 regularization."""
   y_hat = predict(params, X)
-  bce = -np.mean(np.sum(y * y_hat, axis=1))
-  return bce + (l2 / 2) * l2_norm(params)
+  return -np.mean(np.sum(y * y_hat, axis=1)) + (l2 / 2) * l2_norm(params) ** 2.
 
-def projection(params, norm=1.):
-  """Projects model parameters to have at most l2 norm of 1."""
-  return clip_grads(params, norm)
+def l2_norm(tree):
+  """Compute the l2 norm of a tree of arrays. Useful for weight decay."""
+  leaves, _ = tree_flatten(tree)
+  return np.sqrt(sum(np.vdot(x, x) for x in leaves))
+
+def projection(tree, max_norm=1.):
+  """Clip gradients stored as a tree of arrays to maximum norm `max_norm`."""
+  norm = l2_norm(tree)
+  normalize = lambda g: np.where(norm < max_norm, g, g * (max_norm / norm))
+  return tree_map(normalize, tree)
 
 def train(params, step, iters=1):
   """Executes several model parameter steps."""
@@ -147,31 +153,36 @@ if __name__ == "__main__":
     _, lr_params = params
     X, y = batch
     y_hat = predict(params, X)
-    bce = -np.mean(np.sum(y * y_hat, axis=1))
-    return bce + (l2 / 2) * l2_norm(lr_params)
+    return -np.mean(np.sum(y * y_hat, axis=1)) + (l2 / 2) * l2_norm(lr_params) ** 2.
 
   try:
-    print('Loading model...\n')
+    print('Loading model...')
     lr_params = pickle.load(open('lr_params.pkl', 'rb'))
     fe_params = pickle.load(open('fe_params.pkl', 'rb'))
   except:
-    print('Training model on public points...\n')
+    print('Training model on public points...')
     temp, rng = random.split(rng)
     fe_params, lr_params = pretrain(temp, params, predict, pretrain_loss, X, y)
     pickle.dump(lr_params, open('lr_params.pkl', 'wb'))
     pickle.dump(fe_params, open('fe_params.pkl', 'wb'))
 
-  def predict(params, X):
+  def predict(lr_params, X):
     features = feature_extractor(fe_params, X)
-    return logistic_regression(params, features)
+    return logistic_regression(lr_params, features)
 
-  print('Accuracy on public points: {:.4f}'.format(accuracy(lr_params, predict, X, y)))
-  print('Accuracy on private points: {:.4f}\n'.format(accuracy(lr_params, predict, X_test, y_test)))
+  print('\nAccuracy on public points: {:.4f}'.format(accuracy(lr_params, predict, X, y)))
+  print('Accuracy on private points: {:.4f}'.format(accuracy(lr_params, predict, X_test, y_test)))
 
   # Throw out public points, only keep feature extractor
   X, y = X_test, y_test
 
   print('Number of private points: {}'.format(X.shape[0]))
+
+  epsilon = 1.
+  delta = 1 / (X.shape[0] ** 2.)
+
+  print('\nEpsilon: {}'.format(epsilon))
+  print('Delta: {}'.format(delta))
 
   projection_radius = 1.
   l2 = 0.05
@@ -179,12 +190,14 @@ if __name__ == "__main__":
   smooth = 4 - l2
   diameter = 2 * projection_radius
   lipshitz = 1 + l2
+  gamma = (smooth - strong) / (smooth + strong)
 
-  epsilon = 1.
-  delta = 1 / (X.shape[0] ** 1.1)
-
-  init_iterations = 150
   update_iterations = 150
+  init_iterations = int(update_iterations + np.log((diameter * strong * X.shape[0]) / (2 * lipshitz)) / np.log(1. / gamma))
+
+  print('\nInitialization iterations: {}'.format(init_iterations))
+  print('Update iterations: {}'.format(update_iterations))
+  print('L2: {}'.format(l2))
 
   @jit
   def step(params):
@@ -195,25 +208,26 @@ if __name__ == "__main__":
     params = projection(params)
     return tree_unflatten(tree_def, params)
 
-  print('Finetuning on private points...')
-  params = train(lr_params, step, init_iterations)
+  print('\nFinetuning on private points...')
+  for i in range(init_iterations):
+    lr_params = step(lr_params)
   print('Accuracy (not published): {:.4f}'.format(accuracy(lr_params, predict, X, y)))
 
   sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, diameter, epsilon, delta)
-  print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
+  print('Sigma: {:.4f}'.format(sigma))
   temp, rng = random.split(rng)
-  print('Accuracy (published): {:.4f}\n'.format(accuracy(publish(temp, lr_params, sigma), predict, X, y)))
+  print('Accuracy (published): {:.4f}'.format(accuracy(publish(temp, lr_params, sigma), predict, X, y)))
 
   num_updates = 25
   # Delete first row `num_updates` times in sequence
   updates = [lambda X, y: delete_index(0, X, y) for i in range(num_updates)]
-  train_fn = lambda params, X, y: train(lr_params, step, update_iterations)
+  train_fn = lambda params, X, y: train(params, step, update_iterations)
 
-  print('Processing deletion requests...')
-  params, X, y = process_updates(lr_params, X, y, updates, train_fn)
-  print('Accuracy (not published): {:.4f}'.format(accuracy(params, predict, X, y)))
+  print('\nProcessing deletion requests...')
+  lr_params, X, y = process_updates(lr_params, X, y, updates, train_fn)
+  print('Accuracy (not published): {:.4f}'.format(accuracy(lr_params, predict, X, y)))
 
   sigma = compute_sigma(X.shape[0], update_iterations, lipshitz, strong, diameter, epsilon, delta)
-  print('Epsilon: {}, Delta: {}, Sigma: {:.4f}'.format(epsilon, delta, sigma))
+  print('Sigma: {:.4f}'.format(sigma))
   temp, rng = random.split(rng)
-  print('Accuracy (published): {:.4f}\n'.format(accuracy(publish(temp, params, sigma), predict, X, y)))
+  print('Accuracy (published): {:.4f}'.format(accuracy(publish(temp, lr_params, sigma), predict, X, y)))

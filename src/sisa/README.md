@@ -12,7 +12,7 @@ To run: `python private_aggregation.py`
 
 [MNIST](https://en.wikipedia.org/wiki/MNIST_database)
 
-<img src="https://en.wikipedia.org/wiki/MNIST_database#/media/File:MnistExamples.png" />
+![alt text](../../resources/mnist.png)
 
 ```
 X: (60000, 28, 28, 1)
@@ -47,7 +47,7 @@ num_slices = 1
 
 ## Results
 
-![alt text](251.png)
+![alt text](../../resources/251.png)
 
 The above is a histogram of the number of votes the correct label receives, i.e., a bar represents the number of times the correct label got X number of votes across the entire test set.
 
@@ -67,12 +67,12 @@ Accuracy (eps=1.0):   0.9468
 
 ```
 Accuracy (eps=0.001): 0.1082
-Accuracy (eps=0.01): 0.2557
+Accuracy (eps=0.01):  0.2557
 Accuracy (eps=0.025): 0.6062
-Accuracy (eps=0.05): 0.8629
+Accuracy (eps=0.05):  0.8629
 Accuracy (eps=0.075): 0.9235
-Accuracy (eps=0.1): 0.9379
-Accuracy (eps=1.0): 0.9465
+Accuracy (eps=0.1):   0.9379
+Accuracy (eps=1.0):   0.9465
 ```
 
 # Private Ensemble
