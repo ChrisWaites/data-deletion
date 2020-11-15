@@ -1,4 +1,9 @@
-from sisa import *
+import sys
+
+sys.path.append('..')
+sys.path.append('../..')
+
+from sharding import *
 import models
 from train import privately_train, private_training_parameters
 from privacy_accounting import compute_eps_uniform

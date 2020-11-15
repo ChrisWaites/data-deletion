@@ -1,4 +1,9 @@
-from sisa import *
+import sys
+
+sys.path.append('..')
+sys.path.append('../..')
+
+from sharding import *
 import models
 from train import train
 import pickle

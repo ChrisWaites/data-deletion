@@ -20,12 +20,34 @@ dependencies:
   - zlib=1.2.11
   - pip:
     - absl-py==0.10.0
+    - attrs==20.3.0
+    - chardet==3.0.4
+    - cycler==0.10.0
+    - dill==0.3.3
+    - future==0.18.2
+    - googleapis-common-protos==1.52.0
+    - idna==2.10
+    - importlib-resources==3.3.0
     - jax==0.1.75
     - jaxlib==0.1.52
+    - kiwisolver==1.2.0
+    - matplotlib==3.3.2
     - numpy==1.19.1
     - opt-einsum==3.3.0
+    - pandas==1.1.1
+    - pillow==7.2.0
+    - promise==2.3
+    - protobuf==3.14.0
+    - pyparsing==2.4.7
+    - python-dateutil==2.8.1
+    - pytz==2020.1
+    - requests==2.25.0
     - scipy==1.5.2
     - six==1.15.0
+    - tensorflow-datasets==4.1.0
+    - tensorflow-metadata==0.25.0
+    - termcolor==1.1.0
     - tqdm==4.48.2
+    - urllib3==1.26.2
 prefix: /Users/chriswaites/opt/miniconda3/envs/data-deletion
 
