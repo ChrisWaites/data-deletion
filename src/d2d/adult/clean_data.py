@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import random
 
 # documentation
 # output: clean data set, remove missing values and convert categorical values to binary, extract sensitive features
@@ -9,6 +10,10 @@ import pandas as pd
 # X is the full data set of X values
 # X_prime is only the sensitive columns of X
 # y are the binary outcomes
+
+random.seed(0)
+np.random.seed(0)
+
 
 
 def l2_norm(col):
@@ -48,7 +53,8 @@ def one_hot_code(df1, sens_dict):
         if isinstance(df1[c][0], str):
             column = df1[c]
             df1 = df1.drop(c, 1)
-            unique_values = list(set(column))
+            #unique_values = list(set(column))
+            unique_values = list(sorted(set(column)))
             n = len(unique_values)
             if n > 2:
                 for i in range(n):
@@ -169,7 +175,7 @@ def clean_synthetic(num_sens):
 
 def clean_adult_full(scale_and_center=True, intercept=True, normalize=True, sampling_rate=1.0):
     df = pd.read_csv('dataset/adult_full.csv')      #full adult data
-    df = df.sample(frac=sampling_rate).reset_index(drop=True) #subsample
+    df = df.sample(frac=sampling_rate, random_state=0).reset_index(drop=True) #subsample
     df = df.dropna()
     # binarize and remove y value
     df['income'] = df['income'].map({'<=50K': -1, '>50K': 1})

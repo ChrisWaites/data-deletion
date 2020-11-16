@@ -1,0 +1,20 @@
+certifi==2020.6.20
+cycler==0.10.0
+joblib==0.17.0
+kiwisolver==1.2.0
+matplotlib @ file:///opt/concourse/worker/volumes/live/24f995ab-f0a7-4bf7-4b0e-ea68b1f7e8f7/volume/matplotlib-base_1597876350104/work
+mkl-fft==1.2.0
+mkl-random==1.1.1
+mkl-service==2.3.0
+numpy @ file:///opt/concourse/worker/volumes/live/c646f6b9-b398-438d-7dc7-c7142e0ba44b/volume/numpy_and_numpy_base_1596235504536/work
+olefile==0.46
+pandas @ file:///opt/concourse/worker/volumes/live/f14cf8c4-c564-4eff-4b17-158e90dbf88a/volume/pandas_1602088128240/work
+Pillow @ file:///opt/concourse/worker/volumes/live/3e3d5813-e4fa-40da-6aa3-5a29558f718e/volume/pillow_1602788694493/work
+pyparsing==2.4.7
+python-dateutil==2.8.1
+pytz==2020.1
+scikit-learn==0.23.2
+scipy==1.5.3
+six==1.15.0
+threadpoolctl==2.1.0
+tornado==6.0.4

@@ -22,6 +22,9 @@ M: smoothness parameter of the loss function.
 eta_list: list of learning rate values for line search. The first element is the one suggested by theory.
 """
 
+random.seed(0)
+np.random.seed(0)
+
 n_deletions = 5
 n_rounds = 10
 m = 0.05
@@ -114,4 +117,5 @@ plt.title(r'lawschool dataset, $\alpha = {}$'.format(alpha))
 #                        samprate, alpha, m, iters, perfect, n_deletions, n_rounds), 'wb'))
 #plt.savefig('figures/BLAH.png', dpi = 300)
 
+plt.savefig('plot.png', dpi=300)
 plt.show()

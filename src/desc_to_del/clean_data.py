@@ -48,7 +48,7 @@ def one_hot_code(df1, sens_dict):
         if isinstance(df1[c][0], str):
             column = df1[c]
             df1 = df1.drop(c, 1)
-            unique_values = list(set(column))
+            unique_values = list(sorted(set(column)))
             n = len(unique_values)
             if n > 2:
                 for i in range(n):
@@ -171,7 +171,7 @@ def clean_synthetic(num_sens):
 
 def clean_adult_full(scale_and_center=True, intercept=True, normalize=True, samprate = 1.0):
     df = pd.read_csv('dataset/adult_full.csv')      #full adult data
-    df = df.sample(frac=samprate).reset_index(drop=True) #subsample
+    df = df.sample(frac=samprate, random_state=0).reset_index(drop=True) #subsample
     df = df.dropna()
     # binarize and remove y value
     df['income'] = df['income'].map({'<=50K': -1, '>50K': 1})
@@ -193,7 +193,7 @@ def clean_adult_full(scale_and_center=True, intercept=True, normalize=True, samp
     return X, pd.Series(y)
 
 def clean_adult(scale_and_center=True, intercept=True, normalize=True):
-    df = pd.read_csv('dataset/adult.csv')      
+    df = pd.read_csv('dataset/adult.csv')
     df = df.dropna()
     # binarize and remove y value
     df['income'] = df['income'].map({' <=50K': -1, ' >50K': 1})

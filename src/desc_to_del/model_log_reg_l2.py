@@ -13,12 +13,12 @@ class LogisticReg:
         self.theta = theta
         self.constants_dict = {'strong': self.l2_penalty, 'smooth': 0.5 + self.l2_penalty, 'diameter': 2.0,
                                'lip': 1.0 + 2*self.l2_penalty}
-    
+
     def loss_fn(self, theta, X, y):
         n = X.shape[0]
         log_loss = (1/n)*np.sum(np.log(1 + np.exp(-y*np.dot(X, theta)))) + 0.5*self.l2_penalty*np.sum(np.power(theta, 2))
         return log_loss
-    
+
     def gradient_loss_fn(self, X, y):
         n = X.shape[0]
         log_grad = np.dot(np.diag(-y/(1 + np.exp(y*np.dot(X, self.theta)))), X)
