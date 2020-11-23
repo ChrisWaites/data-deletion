@@ -175,6 +175,7 @@ class CheckpointingUpdater:
 def main(_):
   # Create the dataset.
   train_dataset, vocab_size = dataset.load(FLAGS.batch_size, FLAGS.sequence_length)
+  train_dataset = iter(train_dataset)
 
   # Set up the model, loss, and updater.
   forward_fn = build_forward_fn(vocab_size, FLAGS.d_model, FLAGS.num_heads, FLAGS.num_layers, FLAGS.dropout_rate)

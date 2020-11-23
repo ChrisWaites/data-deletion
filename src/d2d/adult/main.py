@@ -123,6 +123,11 @@ def init_W(rng, dim):
   """
   temp, rng = random.split(rng)
   W = random.normal(temp, (dim,))
+  print(W)
+  print(W.shape)
+  print(W.dtype)
+  print(type(W))
+  exit()
   W = unit_projection(W)
   temp, rng = random.split(rng)
   W = random.uniform(temp, ()) * W
@@ -149,12 +154,11 @@ if __name__ == "__main__":
   perfect  = False
   learning_rates = [2 / (strong + smooth), 0.01, 0.1, 0.5, 1, 5, 10]
 
-
   unpublished_accuracies_across_rounds = []
   published_accuracies_across_rounds = []
   retrain_accuracies_across_rounds = []
 
-  X, y = clean_adult_full(intercept=True, sampling_rate=sampling_rate) #scale_and_center=True, normalize=True, intercept=True, sampling_rate=sampling_rate)
+  X, y = clean_adult_full(scale_and_center=True, normalize=True, intercept=True, sampling_rate=sampling_rate)
 
   for round_i in range(num_rounds):
     print('Starting round {}...'.format(round_i))

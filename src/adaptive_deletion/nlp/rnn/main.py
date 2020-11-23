@@ -13,6 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import tensorflow_datasets as tfds
+from tqdm import tqdm
 
 flags.DEFINE_integer('train_batch_size', 32, '')
 flags.DEFINE_integer('eval_batch_size', 1000, '')
@@ -108,17 +109,17 @@ def main(_):
   FLAGS.alsologtostderr = True
 
   # Make training dataset.
-  train_data = dataset.load(
+  train_data = iter(dataset.load(
       tfds.Split.TRAIN,
       batch_size=FLAGS.train_batch_size,
-      sequence_length=FLAGS.sequence_length)
+      sequence_length=FLAGS.sequence_length))
 
   # Make evaluation dataset(s).
   eval_data = {  # pylint: disable=g-complex-comprehension
-    split: dataset.load(
+    split: iter(dataset.load(
       split,
       batch_size=FLAGS.eval_batch_size,
-      sequence_length=FLAGS.sequence_length)
+      sequence_length=FLAGS.sequence_length))
     for split in [tfds.Split.TRAIN, tfds.Split.TEST]
   }
 
@@ -137,7 +138,7 @@ def main(_):
   state = TrainingState(params=initial_params, opt_state=initial_opt_state)
 
   # Training loop.
-  for step in range(FLAGS.training_steps + 1):
+  for step in tqdm(range(FLAGS.training_steps + 1)):
     # Do a batch of SGD.
     train_batch = next(train_data)
     state = update(state, train_batch)
@@ -152,19 +153,19 @@ def main(_):
       prompt = dataset.decode(context)
       continuation = dataset.decode(samples)
 
-      logging.info('Prompt: %s', prompt)
-      logging.info('Continuation: %s', continuation)
+      #logging.info('Prompt: %s', prompt)
+      #logging.info('Continuation: %s', continuation)
 
     # Periodically evaluate training and test loss.
     if step % FLAGS.evaluation_interval == 0:
       for split, ds in eval_data.items():
         eval_batch = next(ds)
         loss = loss_fn(state.params, eval_batch)
-        logging.info({
-            'step': step,
-            'loss': float(loss),
-            'split': split,
-        })
+        #logging.info({
+        #    'step': step,
+        #    'loss': float(loss),
+        #    'split': split,
+        #})
 
 if __name__ == '__main__':
   app.run(main)
