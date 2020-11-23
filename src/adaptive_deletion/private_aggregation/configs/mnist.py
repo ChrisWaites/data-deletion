@@ -30,4 +30,11 @@ def feed_forward():
     return init_fun(rng, (-1, 28 * 28))[1]
   return init_params, predict
 
-
+mnist = {
+  'clf': conv(),
+  'l2_norm_clip': 1.5,
+  'noise_multiplier': 0.7,
+  'iterations':  500,
+  'batch_size': 64,
+  'step_size': 0.25,
+}

@@ -21,16 +21,12 @@ def data_stream(rng, batch_size, X, y):
       batch_idx = perm[i*batch_size:(i+1)*batch_size]
       yield X[batch_idx], y[batch_idx]
 
-def train(rng, params, predict, X, y):
+def train(rng, params, predict, X, y, iterations=65, batch_size=32, step_size=0.01):
   """Generic train function called for each slice.
 
   Responsible for, given an rng key, a set of parameters to be trained, some inputs X and some outputs y,
   finetuning the params on X and y according to some internally defined training configuration.
   """
-  iterations = 65
-  batch_size = 32
-  step_size = 0.01
-
   @jit
   def update(_, i, opt_state, batch):
     params = get_params(opt_state)
@@ -48,26 +44,12 @@ def train(rng, params, predict, X, y):
   return get_params(opt_state)
 
 
-private_training_parameters = {
-  'l2_norm_clip': 1.5,
-  'noise_multiplier': 0.7,
-  'iterations':  500,
-  'batch_size': 64,
-  'step_size': 0.25,
-}
-
-def privately_train(rng, params, predict, X, y):
+def privately_train(rng, params, predict, X, y, l2_norm_clip, noise_multiplier, iterations, batch_size, step_size):
   """Generic train function called for each slice.
 
   Responsible for, given an rng key, a set of parameters to be trained, some inputs X and some outputs y,
   finetuning the params on X and y according to some internally defined training configuration.
   """
-  l2_norm_clip = 1.5
-  noise_multiplier = 0.7
-  iterations = 500
-  batch_size = 64
-  step_size = 0.25
-
   def clipped_grad(params, l2_norm_clip, single_example_batch):
     grads = grad(loss)(params, predict, single_example_batch)
     nonempty_grads, tree_def = tree_flatten(grads)
