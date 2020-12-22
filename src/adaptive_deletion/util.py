@@ -3,8 +3,6 @@ from jax import partial, grad, jit, nn, random, vmap, tree_util, ops
 from jax.experimental import optimizers, stax
 from jax.experimental.stax import Dense, Relu, Tanh, Conv, MaxPool, Flatten
 
-from mnist import mnist
-
 from tqdm import tqdm
 from time import time
 
@@ -138,6 +136,12 @@ def delete_and_retrain(rng, idx, params, predict, X, y, train):
     params[i][s+1] = train(temp, params[i][s], predict, X_train, y_train)
   return params, X, y
 
+def delete_random_index_and_retrain(rng, params, predict, X, y, train):
+  """Randomly samples and deletes idx'th element, and then retrains the sharded and sliced params accordingly."""
+  num_examples = total_examples(X)
+  idx = random.randint(rng, (), 0, num_examples).item()
+  return delete_and_retrain(rng, idx, params, predict, X, y, train)
+
 @log_time
 def delete_and_retrain_multiple(rng, idxs, params, predict, X, y, train):
   """The same as delete_and_retrain, but allows for multiple indices to be specified.
@@ -172,3 +176,15 @@ def total_examples(X):
       count += len(X[i][j])
   return count
 
+def full_dataset(*args):
+  return (np.concatenate([np.concatenate(arg[i]) for i in range(len(arg))]) for arg in args)
+
+def accuracy(params, predict, X, y):
+  targets = np.argmax(y, axis=1)
+  predictions = np.argmax(predict(params, X), axis=1)
+  return np.mean(predictions == targets)
+
+def sharded_and_sliced_accuracy(params, predict, X, y):
+  targets = np.argmax(y, axis=1)
+  predictions = sharded_and_sliced_predict(params, predict, X)
+  return np.mean(predictions == targets)

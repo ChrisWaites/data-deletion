@@ -3,7 +3,7 @@ import sys
 sys.path.append('..')
 sys.path.append('../..')
 
-from sharding import *
+from util import *
 import models
 from train import train
 import pickle
@@ -74,6 +74,8 @@ def parse_args():
   parser = argparse.ArgumentParser(description='')
   parser.add_argument('--dataset', type=str, default='mnist', help='The name of the dataset.')
   parser.add_argument('--seed', type=int, default=0, help='The seed, for reproducibility (default: 0).')
+  parser.add_argument('--num_shards', type=int, default=250, help='Number of shards, i.e., partitions of the dataset (default: 250).')
+  parser.add_argument('--num_slices', type=int, default=1, help='Number of slices, i.e., partitions of a shard (default: 1).')
   return vars(parser.parse_args())
 
 if __name__ == '__main__':

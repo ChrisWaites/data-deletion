@@ -1,18 +1,17 @@
 from jax.experimental import stax
-from jax.experimental.stax import Dense, Relu, Tanh, Conv, MaxPool, Flatten
 
 def conv():
   init_fun, predict = stax.serial(
-    Conv(16, (8, 8), padding='SAME', strides=(2, 2)),
-    Relu,
-    MaxPool((2, 2), (1, 1)),
-    Conv(32, (4, 4), padding='VALID', strides=(2, 2)),
-    Relu,
-    MaxPool((2, 2), (1, 1)),
-    Flatten,
-    Dense(32),
-    Relu,
-    Dense(10),
+    stax.Conv(16, (8, 8), padding='SAME', strides=(2, 2)),
+    stax.Relu,
+    stax.MaxPool((2, 2), (1, 1)),
+    stax.Conv(32, (4, 4), padding='VALID', strides=(2, 2)),
+    stax.Relu,
+    stax.MaxPool((2, 2), (1, 1)),
+    stax.Flatten,
+    stax.Dense(32),
+    stax.Relu,
+    stax.Dense(10),
   )
   def init_params(rng):
     return init_fun(rng, (-1, 28, 28, 1))[1]
@@ -20,21 +19,16 @@ def conv():
 
 def feed_forward():
   init_fun, predict = stax.serial(
-    Dense(1024),
-    Relu,
-    Dense(1024),
-    Relu,
-    Dense(10),
+    stax.Dense(1024),
+    stax.Relu,
+    stax.Dense(1024),
+    stax.Relu,
+    stax.Dense(10),
   )
   def init_params(rng):
     return init_fun(rng, (-1, 28 * 28))[1]
   return init_params, predict
 
 mnist = {
-  'clf': conv(),
-  'l2_norm_clip': 1.5,
-  'noise_multiplier': 0.7,
-  'iterations':  500,
-  'batch_size': 64,
-  'step_size': 0.25,
+  'classifier': conv(),
 }

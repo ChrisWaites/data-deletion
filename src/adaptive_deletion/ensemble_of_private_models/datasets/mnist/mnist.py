@@ -74,4 +74,5 @@ def mnist(permute_train=False):
     train_labels = train_labels[perm]
 
   train_images, test_images = train_images.reshape(-1, 28, 28, 1), test_images.reshape(-1, 28, 28, 1)
+
   return train_images, train_labels, test_images, test_labels
